@@ -1,0 +1,3 @@
+Data Processing and Backend API
+FastAPI (python using UV Python Package Manager)
+Frontend end, react with vite tools.
