@@ -59,7 +59,7 @@ When no calibration scale is supplied, measurements are reported in pixels.
 Open a terminal:
 
 ```bash
-cd /Users/prem/Documents/code_codex/SDNET
+cd \Users\shrav\OneDrive\Documents\code_codex/SDNET
 ```
 
 Install dependencies:

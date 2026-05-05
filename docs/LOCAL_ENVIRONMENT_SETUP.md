@@ -56,7 +56,7 @@ Current crack segmentation is marked as heuristic estimated output because SDNET
 Open Terminal:
 
 ```bash
-cd /Users/prem/Documents/code_codex/SDNET
+cd \Users\shrav\OneDrive\Documents\code_codex/SDNET
 ```
 
 Install dependencies:
@@ -95,7 +95,7 @@ Start backend:
 Open another Terminal and start frontend:
 
 ```bash
-cd /Users/prem/Documents/code_codex/SDNET
+cd \Users\shrav\OneDrive\Documents\code_codex/SDNET
 ./scripts/run_frontend.sh
 ```
 

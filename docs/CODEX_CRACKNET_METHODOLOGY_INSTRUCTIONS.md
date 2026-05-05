@@ -741,7 +741,7 @@ Do not claim physical width/length units unless calibration scale is supplied.
 macOS full fresh Kaggle processing:
 
 ```bash
-cd /Users/prem/Documents/code_codex/SDNET
+cd \Users\shrav\OneDrive\Documents\code_codex/SDNET
 ./scripts/bootstrap.sh
 ./scripts/run_fresh_data_processing.sh \
   --download-mode copy \
@@ -759,7 +759,7 @@ cd /Users/prem/Documents/code_codex/SDNET
 Start frontend in another terminal:
 
 ```bash
-cd /Users/prem/Documents/code_codex/SDNET
+cd \Users\shrav\OneDrive\Documents\code_codex/SDNET
 ./scripts/run_frontend.sh
 ```
 
