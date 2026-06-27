@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import shutil
 import uuid
@@ -38,12 +39,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=[origin.strip() for origin in ALLOWED_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -192,6 +195,17 @@ def summarize_project(records: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "segmentation_source": "heuristic_clahe_frangi_morphology",
         "measurement_method": "mask_skeleton_distance_transform",
+    }
+
+
+@app.get("/", tags=["System"])
+def root() -> dict[str, Any]:
+    return {
+        "name": "SDNET Crack Detection API",
+        "status": "running",
+        "version": app.version,
+        "documentation": "/docs",
+        "health": "/health",
     }
 
 
