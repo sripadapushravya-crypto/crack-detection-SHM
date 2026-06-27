@@ -6,13 +6,33 @@ __pycache__/
 .DS_Store
 node_modules/
 dist/
+
+# Raw dataset (too large for Git)
 data/raw/*
-data/processed/*
-data/models/*
-data/results/*
-data/projects/*
-logs/*
 !data/raw/.gitkeep
+
+# Processed data
+data/processed/*
 !data/processed/.gitkeep
+!data/processed/manifest.csv
+!data/processed/manifest.summary.json
+
+# Models
+data/models/*
 !data/models/.gitkeep
+
+# Results required by the deployed API
+data/results/*
 !data/results/.gitkeep
+!data/results/predictions.csv
+!data/results/metrics.json
+!data/results/summary.json
+!data/results/localizations.csv
+!data/results/localizations.summary.json
+!data/results/methodology_summary.json
+
+# Runtime uploads
+data/projects/*
+
+# Logs
+logs/*

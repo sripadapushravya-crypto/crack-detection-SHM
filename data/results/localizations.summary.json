@@ -1,0 +1,22 @@
+{
+  "average_area_pct": 0.027454891227621903,
+  "average_length_px": 248.56317204301075,
+  "average_max_width_px": 11.534580690886385,
+  "average_mean_width_px": 5.885236762366129,
+  "average_severity_score": 0.548654171065471,
+  "created_at": "2026-05-07T14:59:56.493201+00:00",
+  "localizations_path": "C:\\Users\\shrav\\OneDrive\\Documents\\code_codex\\data\\results\\localizations.csv",
+  "measurement_method": "mask_skeleton_distance_transform",
+  "rows": 6696,
+  "segmentation_source": "heuristic_clahe_frangi_morphology",
+  "severity_basis": [
+    "pixel_estimate"
+  ],
+  "severity_labels": {
+    "high": 2278,
+    "low": 1206,
+    "medium": 3212
+  },
+  "total_crack_area_px": 12048004,
+  "total_crack_length_px": 1664379.0
+}
