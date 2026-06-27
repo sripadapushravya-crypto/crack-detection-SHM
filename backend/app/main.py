@@ -69,6 +69,50 @@ def safe_token(value: str) -> str:
     token = re.sub(r"[^a-zA-Z0-9._-]+", "_", value).strip("._-")
     return token or "image"
 
+def resolve_project_path(path_str: str) -> Path:
+    """
+    Convert Windows absolute paths stored in CSV files into paths
+    that exist on the current machine (Windows or Render Linux).
+    """
+
+    p = Path(str(path_str))
+
+    # already valid
+    if p.exists():
+        return p
+
+    project_root = Path(__file__).resolve().parents[2]
+
+    text = str(path_str).replace("\\", "/")
+
+    marker = "data/raw/"
+
+    if marker in text:
+        relative = text.split(marker, 1)[1]
+        candidate = project_root / "data" / "raw" / relative
+
+        if candidate.exists():
+            return candidate
+
+    marker = "data/results/"
+
+    if marker in text:
+        relative = text.split(marker, 1)[1]
+        candidate = project_root / "data" / "results" / relative
+
+        if candidate.exists():
+            return candidate
+
+    marker = "data/projects/"
+
+    if marker in text:
+        relative = text.split(marker, 1)[1]
+        candidate = project_root / "data" / "projects" / relative
+
+        if candidate.exists():
+            return candidate
+
+    return p
 
 def load_predictions() -> pd.DataFrame:
     if not DEFAULT_PREDICTIONS.exists():
@@ -335,7 +379,7 @@ def project_image_artifact(project_id: str, image_id: str, artifact: str) -> Fil
     if not artifact_path:
         raise HTTPException(status_code=404, detail=f"{artifact} not available for image_id: {image_id}")
 
-    path = Path(str(artifact_path))
+    path = resolve_project_path(artifact_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {path}")
     return FileResponse(path)
@@ -445,7 +489,7 @@ def prediction_image(image_id: str) -> FileResponse:
     if match.empty:
         raise HTTPException(status_code=404, detail=f"Unknown image_id: {image_id}")
 
-    path = Path(str(match.iloc[0]["path"]))
+    path = resolve_project_path(match.iloc[0]["path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Image file no longer exists: {path}")
     return FileResponse(path)
@@ -478,7 +522,7 @@ def prediction_artifact(image_id: str, artifact: str) -> FileResponse:
         raise HTTPException(status_code=404, detail=f"No localization found for image_id: {image_id}")
 
     path_column = f"{artifact}_path"
-    path = Path(str(match.iloc[0].get(path_column, "")))
+    path = resolve_project_path(match.iloc[0].get(path_column, ""))
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {path}")
     return FileResponse(path)
