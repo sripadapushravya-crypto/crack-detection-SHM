@@ -32,11 +32,10 @@ from sdnet_pipeline.localization import analyze_image
 from sdnet_pipeline.methodology import build_methodology_payload, write_methodology_summary
 from sdnet_pipeline.utils import read_json, utc_now_iso, write_json
 
-
 app = FastAPI(
     title="SDNET Crack Detection API",
     description="Local API for SDNET2018 crack detection pipeline outputs.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 ALLOWED_ORIGINS = os.getenv(
@@ -62,57 +61,46 @@ def clean_value(value: Any) -> Any:
 
 
 def clean_records(df: pd.DataFrame) -> list[dict[str, Any]]:
-    return [{key: clean_value(value) for key, value in row.items()} for row in df.to_dict("records")]
+    return [{str(key): clean_value(value) for key, value in row.items()} for row in df.to_dict("records")]
 
 
 def safe_token(value: str) -> str:
     token = re.sub(r"[^a-zA-Z0-9._-]+", "_", value).strip("._-")
     return token or "image"
 
-def resolve_project_path(path_str: str) -> Path:
-    """
-    Convert Windows absolute paths stored in CSV files into paths
-    that exist on the current machine (Windows or Render Linux).
-    """
 
+def resolve_project_path(path_str: str) -> Path:
     p = Path(str(path_str))
 
-    # already valid
     if p.exists():
         return p
 
     project_root = Path(__file__).resolve().parents[2]
-
     text = str(path_str).replace("\\", "/")
 
     marker = "data/raw/"
-
     if marker in text:
         relative = text.split(marker, 1)[1]
         candidate = project_root / "data" / "raw" / relative
-
         if candidate.exists():
             return candidate
 
     marker = "data/results/"
-
     if marker in text:
         relative = text.split(marker, 1)[1]
         candidate = project_root / "data" / "results" / relative
-
         if candidate.exists():
             return candidate
 
     marker = "data/projects/"
-
     if marker in text:
         relative = text.split(marker, 1)[1]
         candidate = project_root / "data" / "projects" / relative
-
         if candidate.exists():
             return candidate
 
     return p
+
 
 def load_predictions() -> pd.DataFrame:
     if not DEFAULT_PREDICTIONS.exists():
@@ -120,7 +108,9 @@ def load_predictions() -> pd.DataFrame:
             status_code=404,
             detail="Predictions not found. Run ./scripts/run_pipeline.sh first.",
         )
+
     predictions = pd.read_csv(DEFAULT_PREDICTIONS)
+
     if DEFAULT_LOCALIZATIONS.exists():
         localizations = pd.read_csv(DEFAULT_LOCALIZATIONS)
         duplicate_columns = {
@@ -130,6 +120,7 @@ def load_predictions() -> pd.DataFrame:
         }
         localizations = localizations.drop(columns=sorted(duplicate_columns), errors="ignore")
         predictions = predictions.merge(localizations, on="image_id", how="left")
+
     return predictions
 
 
@@ -188,6 +179,39 @@ def classify_uploaded_image(image_path: Path, image_id: str, bundle: dict[str, A
     }
 
 
+def enrich_metric_measurements(record: dict[str, Any], scale_mm_per_px: float | None) -> dict[str, Any]:
+    record["scale_mm_per_px"] = scale_mm_per_px
+
+    crack_length_px = record.get("crack_length_px")
+    mean_width_px = record.get("mean_width_px")
+    max_width_px = record.get("max_width_px")
+
+    if scale_mm_per_px is not None:
+        record["crack_length_mm"] = (
+            round(float(crack_length_px) * scale_mm_per_px, 6)
+            if crack_length_px is not None
+            else None
+        )
+        record["mean_width_mm"] = (
+            round(float(mean_width_px) * scale_mm_per_px, 6)
+            if mean_width_px is not None
+            else None
+        )
+        record["max_width_mm"] = (
+            round(float(max_width_px) * scale_mm_per_px, 6)
+            if max_width_px is not None
+            else None
+        )
+        record["severity_basis"] = "metric_calibrated"
+    else:
+        record["crack_length_mm"] = None
+        record["mean_width_mm"] = None
+        record["max_width_mm"] = None
+        record["severity_basis"] = record.get("severity_basis") or "pixel_estimate"
+
+    return record
+
+
 def project_path(project_id: str) -> Path:
     path = PROJECTS_DIR / project_id
     if not path.exists():
@@ -210,10 +234,14 @@ def summarize_project(records: list[dict[str, Any]]) -> dict[str, Any]:
     cracked = [record for record in records if record.get("predicted_label") == "cracked"]
     non_cracked = [record for record in records if record.get("predicted_label") == "non_cracked"]
     localized = [record for record in cracked if record.get("overlay_path")]
+
     severity: dict[str, int] = {}
     for record in localized:
         label = str(record.get("severity_label") or "unknown")
         severity[label] = severity.get(label, 0) + 1
+
+    localized_with_mm = [record for record in localized if record.get("max_width_mm") is not None]
+
     return {
         "image_count": len(records),
         "predicted_cracked": len(cracked),
@@ -237,6 +265,30 @@ def summarize_project(records: list[dict[str, Any]]) -> dict[str, Any]:
             if localized
             else 0.0
         ),
+        "total_crack_length_mm": (
+            round(sum(float(record.get("crack_length_mm") or 0.0) for record in localized_with_mm), 6)
+            if localized_with_mm
+            else None
+        ),
+        "average_mean_width_mm": (
+            round(
+                sum(float(record.get("mean_width_mm") or 0.0) for record in localized_with_mm)
+                / len(localized_with_mm),
+                6,
+            )
+            if localized_with_mm
+            else None
+        ),
+        "average_max_width_mm": (
+            round(
+                sum(float(record.get("max_width_mm") or 0.0) for record in localized_with_mm)
+                / len(localized_with_mm),
+                6,
+            )
+            if localized_with_mm
+            else None
+        ),
+        "calibrated_images": len(localized_with_mm),
         "segmentation_source": "heuristic_clahe_frangi_morphology",
         "measurement_method": "mask_skeleton_distance_transform",
     }
@@ -262,6 +314,7 @@ def health() -> dict[str, str]:
 def list_projects() -> dict[str, Any]:
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
     projects: list[dict[str, Any]] = []
+
     for path in sorted(PROJECTS_DIR.iterdir(), reverse=True):
         metadata_path = path / "project.json"
         if metadata_path.exists():
@@ -274,16 +327,21 @@ def list_projects() -> dict[str, Any]:
                     "summary": payload.get("summary", {}),
                 }
             )
+
     return {"projects": projects}
 
 
 @app.post("/api/projects")
 async def create_project(
     name: str = Form("Concrete Inspection Project"),
+    scale_mm_per_px: float | None = Form(None),
     files: list[UploadFile] = File(...),
 ) -> dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one image.")
+
+    if scale_mm_per_px is not None and scale_mm_per_px <= 0:
+        raise HTTPException(status_code=400, detail="scale_mm_per_px must be greater than 0.")
 
     bundle = load_model_bundle()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -292,6 +350,7 @@ async def create_project(
     uploads_dir = base_dir / "uploads"
     results_dir = base_dir / "results"
     localization_dir = results_dir / "localization"
+
     uploads_dir.mkdir(parents=True, exist_ok=True)
     localization_dir.mkdir(parents=True, exist_ok=True)
 
@@ -302,17 +361,21 @@ async def create_project(
     for index, upload in enumerate(files, start=1):
         original_name = upload.filename or f"upload_{index}.jpg"
         suffix = Path(original_name).suffix.lower()
+
         if suffix not in allowed_suffixes:
             raise HTTPException(status_code=400, detail=f"Unsupported image type: {original_name}")
 
         image_id = f"{project_id}_{index:04d}"
         destination = uploads_dir / f"{image_id}_{safe_token(Path(original_name).stem)}{suffix}"
+
         with destination.open("wb") as handle:
             shutil.copyfileobj(upload.file, handle)
 
         try:
             record = classify_uploaded_image(destination, image_id=image_id, bundle=bundle)
             record["original_filename"] = original_name
+            record["scale_mm_per_px"] = scale_mm_per_px
+
             if record["predicted_label"] == "cracked":
                 localization = analyze_image(
                     pd.Series(record),
@@ -322,10 +385,17 @@ async def create_project(
                     max_polygon_points=160,
                     min_component_length=18,
                     min_elongation=1.8,
+                    scale_mm_per_px=scale_mm_per_px,
                 )
+
+                localization = enrich_metric_measurements(dict(localization), scale_mm_per_px)
                 record.update(localization)
                 localization_records.append(localization)
+            else:
+                record = enrich_metric_measurements(record, scale_mm_per_px)
+
             records.append(record)
+
         except Exception as exc:
             records.append(
                 {
@@ -333,12 +403,14 @@ async def create_project(
                     "path": str(destination.resolve()),
                     "relative_path": destination.name,
                     "original_filename": original_name,
+                    "scale_mm_per_px": scale_mm_per_px,
                     "error": str(exc),
                 }
             )
 
     predictions_path = results_dir / "predictions.csv"
     localizations_path = results_dir / "localizations.csv"
+
     pd.DataFrame(records).to_csv(predictions_path, index=False)
     pd.DataFrame(localization_records).to_csv(localizations_path, index=False)
 
@@ -351,9 +423,11 @@ async def create_project(
         "results_dir": str(results_dir.resolve()),
         "predictions_path": str(predictions_path.resolve()),
         "localizations_path": str(localizations_path.resolve()),
+        "scale_mm_per_px": scale_mm_per_px,
         "summary": summarize_project(records),
         "records": records,
     }
+
     write_json(base_dir / "project.json", project)
     return project
 
@@ -371,17 +445,20 @@ def project_image_artifact(project_id: str, image_id: str, artifact: str) -> Fil
     project = read_project(project_id)
     records = project.get("records", [])
     match = next((record for record in records if record.get("image_id") == image_id), None)
+
     if not match:
         raise HTTPException(status_code=404, detail=f"Unknown image_id: {image_id}")
 
     path_key = "path" if artifact == "original" else f"{artifact}_path"
     artifact_path = match.get(path_key)
+
     if not artifact_path:
         raise HTTPException(status_code=404, detail=f"{artifact} not available for image_id: {image_id}")
 
     path = resolve_project_path(artifact_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {path}")
+
     return FileResponse(path)
 
 
@@ -395,6 +472,7 @@ def status() -> dict[str, Any]:
         "methodology": DEFAULT_METHODOLOGY,
         "summary": DEFAULT_SUMMARY,
     }
+
     return {
         name: {
             "path": str(path),
@@ -446,6 +524,7 @@ def predictions(
     direction: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> dict[str, Any]:
     df = load_predictions()
+
     if surface:
         df = df[df["surface"] == surface]
     if predicted_label:
@@ -457,8 +536,10 @@ def predictions(
 
     total = len(df)
     ascending = direction == "asc"
+
     if sort_by in df.columns:
         df = df.sort_values(sort_by, ascending=ascending)
+
     page = df.iloc[offset : offset + limit].copy()
     return {
         "total": int(total),
@@ -475,7 +556,9 @@ def options() -> dict[str, list[str]]:
         "surfaces": sorted(value for value in df["surface"].dropna().unique().tolist()),
         "predicted_labels": sorted(value for value in df["predicted_label"].dropna().unique().tolist()),
         "actual_labels": sorted(value for value in df["label"].dropna().unique().tolist()),
-        "severity_labels": sorted(value for value in df.get("severity_label", pd.Series(dtype=str)).dropna().unique().tolist()),
+        "severity_labels": sorted(
+            value for value in df.get("severity_label", pd.Series(dtype=str)).dropna().unique().tolist()
+        ),
     }
 
 
@@ -483,15 +566,18 @@ def options() -> dict[str, list[str]]:
 def prediction_image(image_id: str) -> FileResponse:
     df = load_predictions()
     match = df[df["image_id"] == image_id]
+
     if match.empty:
         manifest = load_manifest()
         match = manifest[manifest["image_id"] == image_id]
+
     if match.empty:
         raise HTTPException(status_code=404, detail=f"Unknown image_id: {image_id}")
 
     path = resolve_project_path(match.iloc[0]["path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Image file no longer exists: {path}")
+
     return FileResponse(path)
 
 
@@ -499,15 +585,19 @@ def prediction_image(image_id: str) -> FileResponse:
 def prediction_localization(image_id: str) -> dict[str, Any]:
     df = load_localizations()
     match = df[df["image_id"] == image_id]
+
     if match.empty:
         raise HTTPException(status_code=404, detail=f"No localization found for image_id: {image_id}")
+
     record = clean_records(match.head(1))[0]
     polygons_json = record.get("polygons_json")
+
     if polygons_json:
         try:
             record["polygons"] = json.loads(polygons_json)
         except Exception:
             record["polygons"] = []
+
     return record
 
 
@@ -518,11 +608,14 @@ def prediction_artifact(image_id: str, artifact: str) -> FileResponse:
 
     df = load_localizations()
     match = df[df["image_id"] == image_id]
+
     if match.empty:
         raise HTTPException(status_code=404, detail=f"No localization found for image_id: {image_id}")
 
     path_column = f"{artifact}_path"
     path = resolve_project_path(match.iloc[0].get(path_column, ""))
+
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {path}")
+
     return FileResponse(path)

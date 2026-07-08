@@ -15,7 +15,9 @@ dependencies = [
   "python-multipart>=0.0.9",
   "joblib>=1.4.0",
   "kagglehub>=0.3.0",
-  "tqdm>=4.66.0"
+  "tqdm>=4.66.0",
+  "torch>=2.2.1",
+  "torchvision>=0.17.1",
 ]
 
 [project.scripts]
@@ -26,6 +28,8 @@ sdnet-train = "sdnet_pipeline.train:main"
 sdnet-infer = "sdnet_pipeline.inference:main"
 sdnet-localize = "sdnet_pipeline.localization:main"
 sdnet-methodology-summary = "sdnet_pipeline.methodology:main"
+sdnet-deep-train = "sdnet_pipeline.deep_train:main"
+sdnet-deep-infer = "sdnet_pipeline.deep_inference:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -37,3 +41,12 @@ packages = ["sdnet_pipeline", "backend"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
