@@ -1,0 +1,92 @@
+{
+  "batch_size": 32,
+  "created_at": "2026-07-07T23:07:58.595667+00:00",
+  "device": "cpu",
+  "epochs": 12,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.6441737502424719,
+      "val_loss": 0.5456508462504969
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.5462818296585223,
+      "val_loss": 0.4904448345246877
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.4926510227156443,
+      "val_loss": 0.46779959410882266
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.44447948377406393,
+      "val_loss": 0.5263541773273238
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.4098391557611774,
+      "val_loss": 0.48844275576108537
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.3691295042463989,
+      "val_loss": 0.4845387591651071
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.3313367107933191,
+      "val_loss": 0.461911336210744
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.27913719715630997,
+      "val_loss": 0.5035901219644248
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.24319507598196868,
+      "val_loss": 0.504141459560213
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.2029096244985409,
+      "val_loss": 0.48599905454103937
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.17791299007304723,
+      "val_loss": 0.5241257906271705
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.16249992472090027,
+      "val_loss": 0.5430962530959809
+    }
+  ],
+  "learning_rate": 0.0001,
+  "model_path": "C:\\Users\\shrav\\Downloads\\code_codex\\data\\models\\resnet18_classifier.pt",
+  "model_type": "resnet18",
+  "test_confusion_matrix": {
+    "fn": 169,
+    "fp": 748,
+    "tn": 6394,
+    "tp": 1103
+  },
+  "test_metrics": {
+    "accuracy": 0.8910149750415973,
+    "balanced_accuracy": 0.8812028984358626,
+    "f1": 0.7063720781300032,
+    "precision": 0.595894111291194,
+    "recall": 0.8671383647798742
+  },
+  "threshold_tuning": {
+    "metric": "balanced_accuracy",
+    "metric_value": 0.8894705710680377,
+    "min_recall": 0.7,
+    "recall_at_threshold": 0.8703849175176748,
+    "threshold": 0.22000000000000003
+  },
+  "weight_decay": 0.01
+}
