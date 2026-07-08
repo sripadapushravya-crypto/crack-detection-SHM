@@ -485,7 +485,7 @@ def status() -> dict[str, Any]:
 
 @app.get("/api/summary")
 def summary() -> dict[str, Any]:
-    methodology = read_json(DEFAULT_METHODOLOGY) or build_methodology_payload()
+    methodology = build_methodology_payload()
     output = {
         "summary": read_json(DEFAULT_SUMMARY),
         "metrics": read_json(DEFAULT_METRICS),
@@ -498,9 +498,10 @@ def summary() -> dict[str, Any]:
 
 @app.get("/api/methodology")
 def methodology() -> dict[str, Any]:
-    payload = read_json(DEFAULT_METHODOLOGY)
-    if payload:
-        return payload
+    # Always regenerate from the current code and latest metrics files so the
+    # endpoint can never serve a stale on-disk methodology_summary.json. The
+    # payload is cheap to build (it only reads a few small JSON artifacts), and
+    # regenerating also refreshes the on-disk file as a side effect.
     return write_methodology_summary(DEFAULT_METHODOLOGY)
 
 
