@@ -25,12 +25,12 @@ from sdnet_pipeline.config import (
     DEFAULT_MODEL,
     DEFAULT_PREDICTIONS,
     DEFAULT_SUMMARY,
+    MODELS_DIR,
     PROJECTS_DIR,
 )
 from sdnet_pipeline.features import extract_features
 from sdnet_pipeline.localization import analyze_image
 from sdnet_pipeline.methodology import build_methodology_payload, write_methodology_summary
-from sdnet_pipeline.config import RESULTS_DIR
 from sdnet_pipeline.utils import read_json, utc_now_iso, write_json
 
 app = FastAPI(
