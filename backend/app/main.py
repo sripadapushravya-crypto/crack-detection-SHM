@@ -30,6 +30,7 @@ from sdnet_pipeline.config import (
 from sdnet_pipeline.features import extract_features
 from sdnet_pipeline.localization import analyze_image
 from sdnet_pipeline.methodology import build_methodology_payload, write_methodology_summary
+from sdnet_pipeline.config import RESULTS_DIR
 from sdnet_pipeline.utils import read_json, utc_now_iso, write_json
 
 app = FastAPI(
@@ -140,6 +141,83 @@ def load_manifest() -> pd.DataFrame:
             detail="Manifest not found. Run ./scripts/run_pipeline.sh first.",
         )
     return pd.read_csv(DEFAULT_MANIFEST)
+
+
+# --- ResNet-18 upload classifier (primary path) ---------------------------------
+# Loaded lazily and cached so torch/model weights are only read once per process.
+DEFAULT_RESNET_MODEL = MODELS_DIR / "resnet18_classifier.pt"
+
+_RESNET_STATE: dict[str, Any] = {"model": None, "device": None, "threshold": 0.5, "image_size": 224}
+
+
+def _load_resnet_model() -> dict[str, Any]:
+    if _RESNET_STATE["model"] is not None:
+        return _RESNET_STATE
+
+    if not DEFAULT_RESNET_MODEL.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="ResNet-18 model not found. Train it with 'uv run sdnet-deep-train' first.",
+        )
+
+    import torch
+    from sdnet_pipeline.deep_model import build_resnet18
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint = torch.load(DEFAULT_RESNET_MODEL, map_location=device)
+    model = build_resnet18(pretrained=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)
+    model.eval()
+
+    _RESNET_STATE["model"] = model
+    _RESNET_STATE["device"] = device
+    _RESNET_STATE["threshold"] = float(checkpoint.get("decision_threshold", 0.5))
+    _RESNET_STATE["image_size"] = int(
+        checkpoint.get("feature_config", {}).get("image_size", 224)
+    )
+    return _RESNET_STATE
+
+
+def classify_uploaded_image_resnet(image_path: Path, image_id: str) -> dict[str, Any]:
+    import torch
+    from sdnet_pipeline.deep_dataset import build_transforms
+
+    state = _load_resnet_model()
+    model = state["model"]
+    device = state["device"]
+    threshold = state["threshold"]
+    image_size = state["image_size"]
+    transform = build_transforms(image_size, train=False)
+
+    with Image.open(image_path) as image:
+        rgb = image.convert("RGB")
+        width, height = rgb.size
+        tensor = transform(rgb).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        logit = model(tensor)
+        crack_probability = float(torch.sigmoid(logit).item())
+
+    predicted_target = int(crack_probability >= threshold)
+    predicted_label = "cracked" if predicted_target == 1 else "non_cracked"
+
+    return {
+        "image_id": image_id,
+        "path": str(image_path.resolve()),
+        "relative_path": image_path.name,
+        "label": None,
+        "target": None,
+        "surface": "uploaded",
+        "source_folder": "uploaded",
+        "width": int(width),
+        "height": int(height),
+        "predicted_target": predicted_target,
+        "predicted_label": predicted_label,
+        "crack_probability": crack_probability,
+        "confidence": crack_probability if predicted_target == 1 else 1.0 - crack_probability,
+        "model_type": "resnet18",
+    }
 
 
 def load_model_bundle() -> dict[str, Any]:
@@ -343,7 +421,9 @@ async def create_project(
     if scale_mm_per_px is not None and scale_mm_per_px <= 0:
         raise HTTPException(status_code=400, detail="scale_mm_per_px must be greater than 0.")
 
-    bundle = load_model_bundle()
+    # Warm the ResNet-18 model up front so a missing/broken model fails fast
+    # (before any files are written) with a clear error.
+    _load_resnet_model()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     project_id = f"project_{timestamp}_{uuid.uuid4().hex[:8]}"
     base_dir = PROJECTS_DIR / project_id
@@ -372,7 +452,7 @@ async def create_project(
             shutil.copyfileobj(upload.file, handle)
 
         try:
-            record = classify_uploaded_image(destination, image_id=image_id, bundle=bundle)
+            record = classify_uploaded_image_resnet(destination, image_id=image_id)
             record["original_filename"] = original_name
             record["scale_mm_per_px"] = scale_mm_per_px
 
@@ -485,7 +565,7 @@ def status() -> dict[str, Any]:
 
 @app.get("/api/summary")
 def summary() -> dict[str, Any]:
-    methodology = build_methodology_payload()
+    methodology = read_json(DEFAULT_METHODOLOGY) or build_methodology_payload()
     output = {
         "summary": read_json(DEFAULT_SUMMARY),
         "metrics": read_json(DEFAULT_METRICS),
@@ -498,10 +578,9 @@ def summary() -> dict[str, Any]:
 
 @app.get("/api/methodology")
 def methodology() -> dict[str, Any]:
-    # Always regenerate from the current code and latest metrics files so the
-    # endpoint can never serve a stale on-disk methodology_summary.json. The
-    # payload is cheap to build (it only reads a few small JSON artifacts), and
-    # regenerating also refreshes the on-disk file as a side effect.
+    payload = read_json(DEFAULT_METHODOLOGY)
+    if payload:
+        return payload
     return write_methodology_summary(DEFAULT_METHODOLOGY)
 
 
