@@ -4,8 +4,16 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from sdnet_pipeline.config import DEFAULT_METHODOLOGY, DEFAULT_SUMMARY, ensure_data_dirs
+from sdnet_pipeline.config import (
+    DEFAULT_METHODOLOGY,
+    DEFAULT_SUMMARY,
+    RESULTS_DIR,
+    ensure_data_dirs,
+)
 from sdnet_pipeline.utils import read_json, utc_now_iso, write_json
+
+# Real trained-classifier metrics written by sdnet_pipeline.deep_train.
+DEFAULT_RESNET_METRICS = RESULTS_DIR / "resnet18_metrics.json"
 
 
 METHODOLOGY_STAGES: list[dict[str, Any]] = [
@@ -99,8 +107,16 @@ METHODOLOGY_STAGES: list[dict[str, Any]] = [
 
 MODEL_ARCHITECTURES: list[dict[str, Any]] = [
     {
+        "name": "ResNet-18",
+        "role": "classification (primary, implemented)",
+        "input_size": "224x224x3",
+        "recommended_loss": "class-weighted BCEWithLogitsLoss",
+        "implementation_status": "implemented",
+        "current_fallback": None,
+    },
+    {
         "name": "EfficientNet-B4",
-        "role": "classification",
+        "role": "classification (future upgrade)",
         "input_size": "224x224x3",
         "recommended_loss": "weighted binary cross entropy",
         "implementation_status": "architecture_ready",
@@ -111,7 +127,7 @@ MODEL_ARCHITECTURES: list[dict[str, Any]] = [
     },
     {
         "name": "YOLOv8-seg",
-        "role": "real-time mobile detection + segmentation",
+        "role": "real-time mobile detection + segmentation (future work)",
         "input_size": "640x640x3",
         "recommended_loss": "YOLO detection + segmentation loss",
         "implementation_status": "annotation_required",
@@ -119,7 +135,7 @@ MODEL_ARCHITECTURES: list[dict[str, Any]] = [
     },
     {
         "name": "U-Net++",
-        "role": "pixel-level crack segmentation",
+        "role": "pixel-level crack segmentation (future work)",
         "input_size": "512x512x3",
         "recommended_loss": "Dice loss + binary cross entropy (50:50)",
         "implementation_status": "mask_labels_required",
@@ -170,11 +186,23 @@ PERFORMANCE_RADAR: list[dict[str, Any]] = [
 
 def build_methodology_payload(
     summary_path: Path = DEFAULT_SUMMARY,
+    resnet_metrics_path: Path = DEFAULT_RESNET_METRICS,
 ) -> dict[str, Any]:
     pipeline_summary = read_json(summary_path)
     localization = (
         pipeline_summary.get("localization", {})
         if isinstance(pipeline_summary, dict)
+        else {}
+    )
+    resnet_metrics = read_json(resnet_metrics_path)
+    resnet_test = (
+        resnet_metrics.get("test_metrics", {})
+        if isinstance(resnet_metrics, dict)
+        else {}
+    )
+    resnet_cm = (
+        resnet_metrics.get("test_confusion_matrix", {})
+        if isinstance(resnet_metrics, dict)
         else {}
     )
     return {
@@ -190,13 +218,26 @@ def build_methodology_payload(
         "architectures": MODEL_ARCHITECTURES,
         "performance_radar": {
             "basis": (
-                "Methodology reference baseline for UI comparison. "
-                "Replace with trained-model metrics when EfficientNet-B4 / "
-                "U-Net++ runs are complete."
+                "External literature reference values (ResNet-50, VGG-16, "
+                "EfficientNet-B0) for UI comparison only. These are NOT this "
+                "project's results; the trained ResNet-18 classifier's real "
+                "test-split metrics are surfaced separately under "
+                "'current_classifier'."
             ),
             "scale": "0-100 normalised score",
             "metrics": ["accuracy", "precision", "recall", "roc_auc", "pr_auc", "speed"],
             "models": PERFORMANCE_RADAR,
+        },
+        "current_classifier": {
+            "model": "ResNet-18",
+            "status": "implemented",
+            "decision_threshold": (
+                resnet_metrics.get("threshold_tuning", {}).get("threshold")
+                if isinstance(resnet_metrics, dict)
+                else None
+            ),
+            "test_metrics": resnet_test,
+            "test_confusion_matrix": resnet_cm,
         },
         "current_outputs": {
             "localized_images": int(localization.get("rows", 0) or 0),
