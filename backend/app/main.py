@@ -65,6 +65,33 @@ def clean_records(df: pd.DataFrame) -> list[dict[str, Any]]:
     return [{str(key): clean_value(value) for key, value in row.items()} for row in df.to_dict("records")]
 
 
+def to_native(value: Any) -> Any:
+    """Recursively convert numpy / pandas scalar types to native Python types so
+    the payload is JSON-serialisable (numpy float32/float64/int64 otherwise raise
+    'Object of type float32 is not JSON serializable')."""
+    import numpy as np
+
+    if isinstance(value, dict):
+        return {str(k): to_native(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_native(v) for v in value]
+    if isinstance(value, np.generic):
+        native = value.item()
+        if isinstance(native, float) and math.isnan(native):
+            return None
+        return native
+    if isinstance(value, np.ndarray):
+        return [to_native(v) for v in value.tolist()]
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
 def safe_token(value: str) -> str:
     token = re.sub(r"[^a-zA-Z0-9._-]+", "_", value).strip("._-")
     return token or "image"
@@ -508,6 +535,7 @@ async def create_project(
         "records": records,
     }
 
+    project = to_native(project)
     write_json(base_dir / "project.json", project)
     return project
 

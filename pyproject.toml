@@ -16,7 +16,7 @@ dependencies = [
   "joblib>=1.4.0",
   "kagglehub>=0.3.0",
   "tqdm>=4.66.0",
-  "torch>=2.2.1",
+  "torch==2.4.1",
   "torchvision>=0.17.1",
 ]
 
@@ -35,6 +35,11 @@ sdnet-deep-infer = "sdnet_pipeline.deep_inference:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["sdnet_pipeline", "backend"]
 
@@ -45,8 +50,3 @@ target-version = "py311"
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true

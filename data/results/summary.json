@@ -3,48 +3,49 @@
     "cracked": 8484,
     "non_cracked": 47608
   },
-  "average_crack_probability": 0.1685108750368019,
-  "created_at": "2026-05-07T14:39:33.221331+00:00",
+  "average_crack_probability": 0.17037367391631597,
+  "created_at": "2026-07-06T03:37:35.018181+00:00",
   "decision_threshold": 0.26,
   "feature_config": {
     "image_size": 224,
-    "version": "hog_lbp_edge_v2"
+    "version": "hog_lbp_frangi_geo_v3"
   },
   "localization": {
-    "average_area_pct": 0.027454891227621903,
-    "average_length_px": 248.56317204301075,
-    "average_max_width_px": 11.534580690886385,
-    "average_mean_width_px": 5.885236762366129,
-    "average_severity_score": 0.548654171065471,
-    "created_at": "2026-05-07T14:59:56.493201+00:00",
-    "localizations_path": "C:\\Users\\shrav\\OneDrive\\Documents\\code_codex\\data\\results\\localizations.csv",
+    "average_area_pct": 0.025849139294608352,
+    "average_length_px": 238.58163265306123,
+    "average_max_width_px": 11.11705629360084,
+    "average_mean_width_px": 5.716793160993371,
+    "average_severity_score": 0.5332666365857925,
+    "created_at": "2026-07-06T03:53:57.353131+00:00",
+    "localizations_path": "C:\\Users\\shrav\\Downloads\\code_codex\\data\\results\\localizations.csv",
     "measurement_method": "mask_skeleton_distance_transform",
-    "rows": 6696,
+    "rows": 6566,
     "segmentation_source": "heuristic_clahe_frangi_morphology",
     "severity_basis": [
       "pixel_estimate"
     ],
     "severity_labels": {
-      "high": 2278,
-      "low": 1206,
-      "medium": 3212
+      "high": 2032,
+      "low": 1341,
+      "medium": 3193
     },
-    "total_crack_area_px": 12048004,
-    "total_crack_length_px": 1664379.0
+    "total_crack_area_px": 11123127,
+    "total_crack_length_px": 1566527.0
   },
   "metrics_on_labeled_data": {
-    "accuracy": 0.9589959352492334,
-    "f1": 0.8484848484848485,
-    "precision": 0.961768219832736,
-    "recall": 0.759075907590759
+    "accuracy": 0.9599942950866434,
+    "balanced_accuracy": 0.8756454814348612,
+    "f1": 0.8508970099667774,
+    "precision": 0.9751751446847395,
+    "recall": 0.7547147571900047
   },
-  "model_path": "C:\\Users\\shrav\\OneDrive\\Documents\\code_codex\\data\\models\\crack_classifier.joblib",
+  "model_path": "C:\\Users\\shrav\\Downloads\\code_codex\\data\\models\\crack_classifier.joblib",
   "model_type": "extra_trees",
   "predicted_labels": {
-    "cracked": 6696,
-    "non_cracked": 49396
+    "cracked": 6566,
+    "non_cracked": 49526
   },
-  "predictions_path": "C:\\Users\\shrav\\OneDrive\\Documents\\code_codex\\data\\results\\predictions.csv",
+  "predictions_path": "C:\\Users\\shrav\\Downloads\\code_codex\\data\\results\\predictions.csv",
   "rows": 56092,
   "surfaces": {
     "bridge_deck": 13620,

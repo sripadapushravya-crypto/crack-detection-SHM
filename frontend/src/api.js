@@ -2,6 +2,11 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ||
   "https://crack-detection-shm.onrender.com";
 
+if (import.meta.env.DEV) {
+  // Helps catch the "silently hitting production" bug: confirms which backend the app is calling.
+  console.info("[api] using base:", API_BASE);
+}
+
 async function request(path) {
   const response = await fetch(`${API_BASE}${path}`);
 
@@ -49,10 +54,14 @@ export function getPredictions(filters) {
   return request(`/api/predictions?${params.toString()}`);
 }
 
-export async function uploadProject(name, files) {
+export async function uploadProject(name, files, scaleMmPerPx) {
   const formData = new FormData();
 
   formData.set("name", name || "Concrete Inspection Project");
+
+  if (scaleMmPerPx !== undefined && scaleMmPerPx !== null && scaleMmPerPx !== "") {
+    formData.set("scale_mm_per_px", String(scaleMmPerPx));
+  }
 
   Array.from(files).forEach((file) => {
     formData.append("files", file);

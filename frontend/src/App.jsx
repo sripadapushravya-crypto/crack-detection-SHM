@@ -38,6 +38,22 @@ function number(value, digits = 1) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+function formatMeasurement(pxValue, mmValue, digitsMm = 2, digitsPx = 1) {
+  if (mmValue !== null && mmValue !== undefined && !Number.isNaN(Number(mmValue))) {
+    return `${number(mmValue, digitsMm)} mm`;
+  }
+  if (pxValue === null || pxValue === undefined || !pxValue) return "n/a";
+  return `${number(pxValue, digitsPx)} px`;
+}
+
+function scaleLabel(row) {
+  const scale = row?.scale_mm_per_px;
+  if (scale === null || scale === undefined || Number.isNaN(Number(scale))) {
+    return "Pixel estimate (no scale)";
+  }
+  return `Calibrated \u00b7 ${number(scale, 4)} mm/px`;
+}
+
 function titleLabel(value) {
   return String(value || "")
     .replaceAll("_", " ")
@@ -163,7 +179,7 @@ function DashboardPage({ onOpenUpload }) {
       const [summaryPayload, optionsPayload, methodologyPayload] = await Promise.all([getSummary(), getOptions(), getMethodology()]);
       setSummary(summaryPayload);
       setMethodology(methodologyPayload || summaryPayload.methodology || null);
-      setOptions(optionsPayload);
+      setOptions({ ...emptyOptions, ...optionsPayload });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -176,8 +192,9 @@ function DashboardPage({ onOpenUpload }) {
     setError("");
     try {
       const payload = await getPredictions(filters);
-      setPredictions(payload);
-      setSelected((current) => current || payload.records[0] || null);
+      const records = Array.isArray(payload?.records) ? payload.records : [];
+      setPredictions({ total: payload?.total ?? records.length, records });
+      setSelected((current) => current || records[0] || null);
     } catch (err) {
       setError(err.message);
       setPredictions({ total: 0, records: [] });
@@ -331,7 +348,7 @@ function DashboardPage({ onOpenUpload }) {
             Surface
             <select value={filters.surface} onChange={(event) => setFilters({ ...filters, surface: event.target.value })}>
               <option value="">All surfaces</option>
-              {options.surfaces.map((surface) => (
+              {(options.surfaces || []).map((surface) => (
                 <option key={surface} value={surface}>
                   {surface}
                 </option>
@@ -345,7 +362,7 @@ function DashboardPage({ onOpenUpload }) {
               onChange={(event) => setFilters({ ...filters, predicted_label: event.target.value })}
             >
               <option value="">All predictions</option>
-              {options.predicted_labels.map((label) => (
+              {(options.predicted_labels || []).map((label) => (
                 <option key={label} value={label}>
                   {label}
                 </option>
@@ -356,7 +373,7 @@ function DashboardPage({ onOpenUpload }) {
             Actual Label
             <select value={filters.actual_label} onChange={(event) => setFilters({ ...filters, actual_label: event.target.value })}>
               <option value="">All labels</option>
-              {options.actual_labels.map((label) => (
+              {(options.actual_labels || []).map((label) => (
                 <option key={label} value={label}>
                   {label}
                 </option>
@@ -405,7 +422,7 @@ function DashboardPage({ onOpenUpload }) {
                 </tr>
               </thead>
               <tbody>
-                {predictions.records.map((row) => (
+                {(predictions.records || []).map((row) => (
                   <tr
                     key={row.image_id}
                     className={selected?.image_id === row.image_id ? "active" : ""}
@@ -420,8 +437,12 @@ function DashboardPage({ onOpenUpload }) {
                     <td>{pct(row.crack_probability)}</td>
                     <td>{row.severity_label || "n/a"}</td>
                     <td>{row.crack_area_pct !== undefined && row.crack_area_pct !== null ? pct(row.crack_area_pct) : "n/a"}</td>
-                    <td>{row.crack_length_px ? `${number(row.crack_length_px, 0)} px` : "n/a"}</td>
-                    <td>{row.max_width_px ? `${number(row.mean_width_px, 1)} / ${number(row.max_width_px, 1)} px` : "n/a"}</td>
+                    <td>{formatMeasurement(row.crack_length_px, row.crack_length_mm, 2, 0)}</td>
+                    <td>
+                      {row.max_width_px
+                        ? `${formatMeasurement(row.mean_width_px, row.mean_width_mm)} / ${formatMeasurement(row.max_width_px, row.max_width_mm)}`
+                        : "n/a"}
+                    </td>
                     <td>{pct(row.confidence)}</td>
                   </tr>
                 ))}
@@ -435,27 +456,36 @@ function DashboardPage({ onOpenUpload }) {
           {selected ? (
             <>
               <div className="previewTabs" role="tablist" aria-label="Preview mode">
-                {["original", "overlay", "heatmap", "mask"].map((mode) => (
-                  <button
-                    key={mode}
-                    className={previewMode === mode ? "active" : ""}
-                    onClick={() => setPreviewMode(mode)}
-                    type="button"
-                  >
-                    {mode}
-                  </button>
-                ))}
+                {["original", "overlay", "heatmap", "mask"].map((mode) => {
+                  const available = mode === "original" || Boolean(selected[`${mode}_path`]);
+                  return (
+                    <button
+                      key={mode}
+                      className={previewMode === mode ? "active" : ""}
+                      onClick={() => setPreviewMode(mode)}
+                      type="button"
+                      disabled={!available}
+                      title={available ? undefined : "Not available \u2014 image was not classified as cracked"}
+                    >
+                      {mode}
+                    </button>
+                  );
+                })}
               </div>
-              <img
-                src={
-                  previewMode === "original"
-                    ? imageUrl(selected.image_id)
-                    : selected[`${previewMode}_path`]
-                      ? artifactUrl(selected.image_id, previewMode)
-                      : imageUrl(selected.image_id)
-                }
-                alt={`${previewMode} ${selected.image_id}`}
-              />
+              {previewMode === "original" || selected[`${previewMode}_path`] ? (
+                <img
+                  src={
+                    previewMode === "original"
+                      ? imageUrl(selected.image_id)
+                      : artifactUrl(selected.image_id, previewMode)
+                  }
+                  alt={`${previewMode} ${selected.image_id}`}
+                />
+              ) : (
+                <div className="emptyState compact">
+                  No {previewMode} available for this image (not classified as cracked).
+                </div>
+              )}
               <dl>
                 <div>
                   <dt>Image ID</dt>
@@ -479,15 +509,19 @@ function DashboardPage({ onOpenUpload }) {
                 </div>
                 <div>
                   <dt>Length</dt>
-                  <dd>{selected.crack_length_px ? `${number(selected.crack_length_px, 0)} px` : "n/a"}</dd>
+                  <dd>{formatMeasurement(selected.crack_length_px, selected.crack_length_mm, 2, 0)}</dd>
                 </div>
                 <div>
                   <dt>Mean Width</dt>
-                  <dd>{selected.mean_width_px ? `${number(selected.mean_width_px, 1)} px` : "n/a"}</dd>
+                  <dd>{formatMeasurement(selected.mean_width_px, selected.mean_width_mm)}</dd>
                 </div>
                 <div>
                   <dt>Max Width</dt>
-                  <dd>{selected.max_width_px ? `${number(selected.max_width_px, 1)} px` : "n/a"}</dd>
+                  <dd>{formatMeasurement(selected.max_width_px, selected.max_width_mm)}</dd>
+                </div>
+                <div>
+                  <dt>Scale</dt>
+                  <dd>{scaleLabel(selected)}</dd>
                 </div>
                 <div>
                   <dt>Components</dt>
@@ -515,6 +549,8 @@ function DashboardPage({ onOpenUpload }) {
 function ProjectUploadPage({ onOpenDashboard }) {
   const [projectName, setProjectName] = useState("Concrete Inspection Project");
   const [files, setFiles] = useState([]);
+  const [scaleSource, setScaleSource] = useState("none");
+  const [scaleMmPerPx, setScaleMmPerPx] = useState("");
   const [project, setProject] = useState(null);
   const [selected, setSelected] = useState(null);
   const [previewMode, setPreviewMode] = useState("overlay");
@@ -527,10 +563,18 @@ function ProjectUploadPage({ onOpenDashboard }) {
       setError("Select at least one image.");
       return;
     }
+    if (scaleSource === "manual") {
+      const parsed = Number(scaleMmPerPx);
+      if (!scaleMmPerPx || Number.isNaN(parsed) || parsed <= 0) {
+        setError("Enter a scale greater than 0 (mm per pixel), or switch Scale source to None.");
+        return;
+      }
+    }
     setLoading(true);
     setError("");
     try {
-      const payload = await uploadProject(projectName, files);
+      const appliedScale = scaleSource === "manual" ? Number(scaleMmPerPx) : null;
+      const payload = await uploadProject(projectName, files, appliedScale);
       setProject(payload);
       setSelected(payload.records?.[0] || null);
       setPreviewMode("overlay");
@@ -582,6 +626,38 @@ function ProjectUploadPage({ onOpenDashboard }) {
               onChange={(event) => setFiles(Array.from(event.target.files || []))}
             />
           </label>
+          <label>
+            Scale Source
+            <select
+              value={scaleSource}
+              onChange={(event) => {
+                setScaleSource(event.target.value);
+                if (event.target.value === "none") setScaleMmPerPx("");
+              }}
+            >
+              <option value="none">None (pixel estimate)</option>
+              <option value="manual">Manual (mm per pixel)</option>
+            </select>
+          </label>
+          {scaleSource === "none" && (
+            <p style={{ margin: "-6px 0 14px", color: "#647169", fontSize: "0.8rem", fontWeight: 400 }}>
+              Measurements will be reported in pixels. Select “Manual” and enter a mm-per-pixel
+              value to report physical units (mm).
+            </p>
+          )}
+          {scaleSource === "manual" && (
+            <label>
+              Scale (mm per pixel)
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="e.g. 0.0530"
+                value={scaleMmPerPx}
+                onChange={(event) => setScaleMmPerPx(event.target.value)}
+              />
+            </label>
+          )}
           <button className="primaryButton" type="submit" disabled={loading || !files.length}>
             <UploadCloud size={18} />
             <span>{loading ? "Processing..." : `Process ${count(files.length)} Images`}</span>
@@ -631,8 +707,8 @@ function ProjectUploadPage({ onOpenDashboard }) {
                       <td>{pct(row.crack_probability)}</td>
                       <td>{row.severity_label || "n/a"}</td>
                       <td>{row.crack_area_pct !== undefined && row.crack_area_pct !== null ? pct(row.crack_area_pct) : "n/a"}</td>
-                      <td>{row.crack_length_px ? `${number(row.crack_length_px, 0)} px` : "n/a"}</td>
-                      <td>{row.mean_width_px ? `${number(row.mean_width_px, 1)} px` : "n/a"}</td>
+                      <td>{formatMeasurement(row.crack_length_px, row.crack_length_mm, 2, 0)}</td>
+                      <td>{formatMeasurement(row.mean_width_px, row.mean_width_mm)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -645,25 +721,32 @@ function ProjectUploadPage({ onOpenDashboard }) {
               {selected && project ? (
                 <>
                   <div className="previewTabs" role="tablist" aria-label="Project preview mode">
-                    {["original", "overlay", "heatmap", "mask"].map((mode) => (
-                      <button
-                        key={mode}
-                        className={previewMode === mode ? "active" : ""}
-                        onClick={() => setPreviewMode(mode)}
-                        type="button"
-                      >
-                        {mode}
-                      </button>
-                    ))}
+                    {["original", "overlay", "heatmap", "mask"].map((mode) => {
+                      const available = mode === "original" || Boolean(selected[`${mode}_path`]);
+                      return (
+                        <button
+                          key={mode}
+                          className={previewMode === mode ? "active" : ""}
+                          onClick={() => setPreviewMode(mode)}
+                          type="button"
+                          disabled={!available}
+                          title={available ? undefined : "Not available \u2014 image was not classified as cracked"}
+                        >
+                          {mode}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <img
-                    src={projectArtifactUrl(
-                      project.project_id,
-                      selected.image_id,
-                      previewMode === "original" || selected[`${previewMode}_path`] ? previewMode : "original",
-                    )}
-                    alt={`${previewMode} ${selected.image_id}`}
-                  />
+                  {previewMode === "original" || selected[`${previewMode}_path`] ? (
+                    <img
+                      src={projectArtifactUrl(project.project_id, selected.image_id, previewMode)}
+                      alt={`${previewMode} ${selected.image_id}`}
+                    />
+                  ) : (
+                    <div className="emptyState compact">
+                      No {previewMode} available for this image (not classified as cracked).
+                    </div>
+                  )}
                   <dl>
                     <div>
                       <dt>Prediction</dt>
@@ -683,15 +766,19 @@ function ProjectUploadPage({ onOpenDashboard }) {
                     </div>
                     <div>
                       <dt>Length</dt>
-                      <dd>{selected.crack_length_px ? `${number(selected.crack_length_px, 0)} px` : "n/a"}</dd>
+                      <dd>{formatMeasurement(selected.crack_length_px, selected.crack_length_mm, 2, 0)}</dd>
                     </div>
                     <div>
                       <dt>Mean Width</dt>
-                      <dd>{selected.mean_width_px ? `${number(selected.mean_width_px, 1)} px` : "n/a"}</dd>
+                      <dd>{formatMeasurement(selected.mean_width_px, selected.mean_width_mm)}</dd>
                     </div>
                     <div>
                       <dt>Max Width</dt>
-                      <dd>{selected.max_width_px ? `${number(selected.max_width_px, 1)} px` : "n/a"}</dd>
+                      <dd>{formatMeasurement(selected.max_width_px, selected.max_width_mm)}</dd>
+                    </div>
+                    <div>
+                      <dt>Scale</dt>
+                      <dd>{scaleLabel(selected)}</dd>
                     </div>
                     <div>
                       <dt>Method</dt>
@@ -714,12 +801,51 @@ function ProjectUploadPage({ onOpenDashboard }) {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("[dashboard] render error:", error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="shell">
+          <section className="notice">
+            <AlertTriangle size={18} />
+            <span>
+              This view failed to render: {this.state.error.message}. This usually means the API
+              returned an unexpected shape (often because the frontend is pointed at the wrong
+              backend). Reload to retry; if it persists, confirm the backend is reachable and
+              returning the expected fields.
+            </span>
+          </section>
+        </main>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   const [page, setPage] = useState("dashboard");
-  if (page === "upload") {
-    return <ProjectUploadPage onOpenDashboard={() => setPage("dashboard")} />;
-  }
-  return <DashboardPage onOpenUpload={() => setPage("upload")} />;
+  return (
+    <ErrorBoundary key={page}>
+      {page === "upload" ? (
+        <ProjectUploadPage onOpenDashboard={() => setPage("dashboard")} />
+      ) : (
+        <DashboardPage onOpenUpload={() => setPage("upload")} />
+      )}
+    </ErrorBoundary>
+  );
 }
 
 export default App;
