@@ -3,7 +3,7 @@ name = "sdnet-local-poc"
 version = "0.1.0"
 description = "Local end-to-end SDNET2018 concrete crack detection proof of concept."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
   "fastapi>=0.111.0",
   "uvicorn[standard]>=0.30.0",
