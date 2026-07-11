@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 from skimage import exposure, filters, measure, morphology, util
 from tqdm import tqdm
 
@@ -19,6 +19,13 @@ from sdnet_pipeline.config import (
     ensure_data_dirs,
 )
 from sdnet_pipeline.utils import read_json, utc_now_iso, write_json
+
+# Cap the resolution fed to the memory-heavy CLAHE + Frangi pipeline. Full-res
+# phone photos (~12 MP) allocate hundreds of MB of float64 arrays here and OOM
+# small instances (e.g. a 512 MB Render free tier). We process a downscaled copy
+# and scale pixel measurements back to the original resolution afterwards. Raise
+# this if you move to an instance with more RAM and want finer measurements.
+MAX_PROCESS_SIDE = 1280
 
 
 # --------------------------------------------------------------------------- #
@@ -381,8 +388,23 @@ def analyze_image(
 ) -> dict[str, Any]:
     image_path = Path(str(row["path"]))
     image = Image.open(image_path).convert("RGB")
-    gray = util.img_as_float(np.asarray(image.convert("L")))
-    width, height = image.size
+    image = ImageOps.exif_transpose(image)  # respect phone EXIF orientation
+    width, height = image.size  # original dimensions (reported + used for mm scale)
+
+    # Downscale a working copy so CLAHE + Frangi stay within a small RAM budget.
+    # proc_scale >= 1.0 is the factor from processed pixels back to original pixels.
+    longest_side = max(width, height)
+    if longest_side > MAX_PROCESS_SIDE:
+        proc_scale = longest_side / float(MAX_PROCESS_SIDE)
+        proc_image = image.resize(
+            (max(1, round(width / proc_scale)), max(1, round(height / proc_scale))),
+            Image.LANCZOS,
+        )
+    else:
+        proc_scale = 1.0
+        proc_image = image
+
+    gray = util.img_as_float(np.asarray(proc_image.convert("L")))
 
     mask, likelihood = segment_crack(
         gray,
@@ -392,15 +414,18 @@ def analyze_image(
     )
 
     skeleton = morphology.skeletonize(mask)
-    crack_area_px = int(mask.sum())
-    crack_length_px = float(skeleton.sum())
-    crack_area_pct = float(crack_area_px / max(width * height, 1))
+    # Rescale measurements from processed-pixel space to the original resolution:
+    # area scales with proc_scale**2, length and width with proc_scale. Area percent
+    # is a ratio and is unaffected, so compute it in processed space directly.
+    crack_area_pct = float(int(mask.sum()) / max(gray.shape[0] * gray.shape[1], 1))
+    crack_area_px = int(round(mask.sum() * (proc_scale ** 2)))
+    crack_length_px = float(skeleton.sum()) * proc_scale
 
-    if crack_length_px > 0:
+    if skeleton.sum() > 0:
         _, distance = morphology.medial_axis(mask, return_distance=True)
         skeleton_widths = np.asarray(distance[skeleton], dtype=np.float32) * 2.0
-        mean_width_px = float(np.mean(skeleton_widths)) if skeleton_widths.size else 0.0
-        max_width_px = float(np.max(skeleton_widths)) if skeleton_widths.size else 0.0
+        mean_width_px = (float(np.mean(skeleton_widths)) if skeleton_widths.size else 0.0) * proc_scale
+        max_width_px = (float(np.max(skeleton_widths)) if skeleton_widths.size else 0.0) * proc_scale
     else:
         mean_width_px = 0.0
         max_width_px = 0.0
@@ -427,8 +452,8 @@ def analyze_image(
     heatmap_path = output_dir / "heatmaps" / f"{image_id}.jpg"
     mask_path = output_dir / "masks" / f"{image_id}.png"
 
-    save_overlay(overlay_path, image, mask, polygons)
-    save_heatmap(heatmap_path, image, likelihood)
+    save_overlay(overlay_path, proc_image, mask, polygons)
+    save_heatmap(heatmap_path, proc_image, likelihood)
     save_mask(mask_path, mask)
 
     return {

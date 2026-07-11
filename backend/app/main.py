@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import math
 import os
@@ -190,6 +191,9 @@ def _load_resnet_model() -> dict[str, Any]:
     import torch
     from sdnet_pipeline.deep_model import build_resnet18
 
+    # One thread keeps per-thread allocator buffers small on constrained instances.
+    torch.set_num_threads(1)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint = torch.load(DEFAULT_RESNET_MODEL, map_location=device)
     model = build_resnet18(pretrained=False)
@@ -222,9 +226,11 @@ def classify_uploaded_image_resnet(image_path: Path, image_id: str) -> dict[str,
         width, height = rgb.size
         tensor = transform(rgb).unsqueeze(0).to(device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         logit = model(tensor)
         crack_probability = float(torch.sigmoid(logit).item())
+
+    del tensor, logit
 
     predicted_target = int(crack_probability >= threshold)
     predicted_label = "cracked" if predicted_target == 1 else "non_cracked"
@@ -502,6 +508,7 @@ async def create_project(
                 record = enrich_metric_measurements(record, scale_mm_per_px)
 
             records.append(record)
+            gc.collect()  # return large localization arrays to the OS between images
 
         except Exception as exc:
             records.append(
