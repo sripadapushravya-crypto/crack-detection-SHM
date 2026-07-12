@@ -15,7 +15,7 @@ import joblib
 import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from PIL import Image
 
 from sdnet_pipeline.config import (
@@ -129,6 +129,36 @@ def resolve_project_path(path_str: str) -> Path:
             return candidate
 
     return p
+
+
+# Base URL for externally hosted image assets (e.g. a Hugging Face dataset repo
+# like https://huggingface.co/datasets/<user>/<repo>/resolve/main). When set,
+# dataset images/artifacts not present on disk are served by redirecting to this
+# host, so the large SDNET assets never need to ship inside the container.
+ASSET_BASE_URL = os.getenv("ASSET_BASE_URL", "").rstrip("/")
+
+
+def resolve_asset(path_str: str) -> tuple[str, Any]:
+    """Resolve a stored artifact path to a local file or a remote URL.
+
+    Returns ("file", Path) when the asset exists locally (dev machine or files
+    shipped with the deploy), or ("url", str) when it must be fetched from
+    ASSET_BASE_URL. The remote path mirrors the local data/ tree: a stored path
+    ending in data/raw/D/CD/x.jpg maps to <ASSET_BASE_URL>/raw/D/CD/x.jpg, and
+    data/results/localization/overlays/x.jpg to <ASSET_BASE_URL>/results/....
+    """
+    local = resolve_project_path(path_str)
+    if local.exists():
+        return ("file", local)
+
+    if ASSET_BASE_URL:
+        text = str(path_str).replace("\\", "/")
+        for marker in ("data/raw/", "data/results/", "data/projects/"):
+            if marker in text:
+                relative = marker[len("data/") :] + text.split(marker, 1)[1]
+                return ("url", f"{ASSET_BASE_URL}/{relative}")
+
+    return ("file", local)
 
 
 def load_predictions() -> pd.DataFrame:
@@ -678,7 +708,7 @@ def options() -> dict[str, list[str]]:
 
 
 @app.get("/api/predictions/{image_id}/image")
-def prediction_image(image_id: str) -> FileResponse:
+def prediction_image(image_id: str):
     df = load_predictions()
     match = df[df["image_id"] == image_id]
 
@@ -689,11 +719,13 @@ def prediction_image(image_id: str) -> FileResponse:
     if match.empty:
         raise HTTPException(status_code=404, detail=f"Unknown image_id: {image_id}")
 
-    path = resolve_project_path(match.iloc[0]["path"])
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Image file no longer exists: {path}")
+    kind, target = resolve_asset(match.iloc[0]["path"])
+    if kind == "url":
+        return RedirectResponse(target)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Image file no longer exists: {target}")
 
-    return FileResponse(path)
+    return FileResponse(target)
 
 
 @app.get("/api/predictions/{image_id}/localization")
@@ -717,7 +749,7 @@ def prediction_localization(image_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/predictions/{image_id}/{artifact}")
-def prediction_artifact(image_id: str, artifact: str) -> FileResponse:
+def prediction_artifact(image_id: str, artifact: str):
     if artifact not in {"overlay", "heatmap", "mask"}:
         raise HTTPException(status_code=404, detail=f"Unsupported artifact: {artifact}")
 
@@ -728,9 +760,11 @@ def prediction_artifact(image_id: str, artifact: str) -> FileResponse:
         raise HTTPException(status_code=404, detail=f"No localization found for image_id: {image_id}")
 
     path_column = f"{artifact}_path"
-    path = resolve_project_path(match.iloc[0].get(path_column, ""))
+    kind, target = resolve_asset(match.iloc[0].get(path_column, ""))
+    if kind == "url":
+        return RedirectResponse(target)
 
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {path}")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"{artifact} file no longer exists: {target}")
 
-    return FileResponse(path)
+    return FileResponse(target)
