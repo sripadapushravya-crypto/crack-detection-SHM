@@ -15,7 +15,17 @@ PROJECTS_DIR = DATA_DIR / "projects"
 DEFAULT_DATASET_DIR = RAW_DIR / "sdnet2018"
 DEFAULT_MANIFEST = PROCESSED_DIR / "manifest.csv"
 DEFAULT_MODEL = MODELS_DIR / "crack_classifier.joblib"
-DEFAULT_METRICS = RESULTS_DIR / "metrics.json"
+
+# Extra Trees (classical baseline) artifacts — kept for the baseline comparison.
+BASELINE_MODEL = MODELS_DIR / "crack_classifier.joblib"
+BASELINE_METRICS = RESULTS_DIR / "metrics.json"
+
+# ResNet-18 (primary classifier) artifacts. DEFAULT_METRICS drives the dashboard,
+# so it must point at the primary model, not the baseline — otherwise the app
+# reports the weakest model as the headline result.
+RESNET_MODEL = MODELS_DIR / "resnet18_classifier.pt"
+RESNET_METRICS = RESULTS_DIR / "resnet18_metrics_tau081.json"
+DEFAULT_METRICS = RESNET_METRICS
 DEFAULT_PREDICTIONS = RESULTS_DIR / "predictions.csv"
 DEFAULT_SUMMARY = RESULTS_DIR / "summary.json"
 DEFAULT_LOCALIZATIONS = RESULTS_DIR / "localizations.csv"
