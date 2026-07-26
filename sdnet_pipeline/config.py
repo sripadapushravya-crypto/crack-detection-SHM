@@ -24,7 +24,7 @@ BASELINE_METRICS = RESULTS_DIR / "metrics.json"
 # so it must point at the primary model, not the baseline — otherwise the app
 # reports the weakest model as the headline result.
 RESNET_MODEL = MODELS_DIR / "resnet18_classifier.pt"
-RESNET_METRICS = RESULTS_DIR / "resnet18_metrics_tau081.json"
+RESNET_METRICS = RESULTS_DIR / "resnet18_metrics_tau022.json"
 DEFAULT_METRICS = RESNET_METRICS
 DEFAULT_PREDICTIONS = RESULTS_DIR / "predictions.csv"
 DEFAULT_SUMMARY = RESULTS_DIR / "summary.json"

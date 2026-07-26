@@ -179,7 +179,7 @@ function DashboardPage({ onOpenUpload }) {
       const [summaryPayload, optionsPayload, methodologyPayload] = await Promise.all([getSummary(), getOptions(), getMethodology()]);
       setSummary(summaryPayload);
       setMethodology(methodologyPayload || summaryPayload.methodology || null);
-      setOptions({ ...emptyOptions, ...optionsPayload });
+      setOptions(optionsPayload);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -192,9 +192,8 @@ function DashboardPage({ onOpenUpload }) {
     setError("");
     try {
       const payload = await getPredictions(filters);
-      const records = Array.isArray(payload?.records) ? payload.records : [];
-      setPredictions({ total: payload?.total ?? records.length, records });
-      setSelected((current) => current || records[0] || null);
+      setPredictions(payload);
+      setSelected((current) => current || payload.records[0] || null);
     } catch (err) {
       setError(err.message);
       setPredictions({ total: 0, records: [] });
@@ -332,6 +331,9 @@ function DashboardPage({ onOpenUpload }) {
             <div>
               <h2>Performance Radar</h2>
               <p>{radar.scale || "0-100 normalized score"}</p>
+              <p className="radarNote" style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "2px" }}>
+                Reference architectures for context. Deployed model: ResNet-18.
+              </p>
             </div>
           </div>
           <RadarChart radar={radar} />
@@ -348,7 +350,7 @@ function DashboardPage({ onOpenUpload }) {
             Surface
             <select value={filters.surface} onChange={(event) => setFilters({ ...filters, surface: event.target.value })}>
               <option value="">All surfaces</option>
-              {(options.surfaces || []).map((surface) => (
+              {options.surfaces.map((surface) => (
                 <option key={surface} value={surface}>
                   {surface}
                 </option>
@@ -362,7 +364,7 @@ function DashboardPage({ onOpenUpload }) {
               onChange={(event) => setFilters({ ...filters, predicted_label: event.target.value })}
             >
               <option value="">All predictions</option>
-              {(options.predicted_labels || []).map((label) => (
+              {options.predicted_labels.map((label) => (
                 <option key={label} value={label}>
                   {label}
                 </option>
@@ -373,7 +375,7 @@ function DashboardPage({ onOpenUpload }) {
             Actual Label
             <select value={filters.actual_label} onChange={(event) => setFilters({ ...filters, actual_label: event.target.value })}>
               <option value="">All labels</option>
-              {(options.actual_labels || []).map((label) => (
+              {options.actual_labels.map((label) => (
                 <option key={label} value={label}>
                   {label}
                 </option>
@@ -422,7 +424,7 @@ function DashboardPage({ onOpenUpload }) {
                 </tr>
               </thead>
               <tbody>
-                {(predictions.records || []).map((row) => (
+                {predictions.records.map((row) => (
                   <tr
                     key={row.image_id}
                     className={selected?.image_id === row.image_id ? "active" : ""}
@@ -639,12 +641,6 @@ function ProjectUploadPage({ onOpenDashboard }) {
               <option value="manual">Manual (mm per pixel)</option>
             </select>
           </label>
-          {scaleSource === "none" && (
-            <p style={{ margin: "-6px 0 14px", color: "#647169", fontSize: "0.8rem", fontWeight: 400 }}>
-              Measurements will be reported in pixels. Select “Manual” and enter a mm-per-pixel
-              value to report physical units (mm).
-            </p>
-          )}
           {scaleSource === "manual" && (
             <label>
               Scale (mm per pixel)
@@ -801,51 +797,12 @@ function ProjectUploadPage({ onOpenDashboard }) {
   );
 }
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { error: null };
-  }
-
-  static getDerivedStateFromError(error) {
-    return { error };
-  }
-
-  componentDidCatch(error, info) {
-    console.error("[dashboard] render error:", error, info);
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <main className="shell">
-          <section className="notice">
-            <AlertTriangle size={18} />
-            <span>
-              This view failed to render: {this.state.error.message}. This usually means the API
-              returned an unexpected shape (often because the frontend is pointed at the wrong
-              backend). Reload to retry; if it persists, confirm the backend is reachable and
-              returning the expected fields.
-            </span>
-          </section>
-        </main>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 function App() {
   const [page, setPage] = useState("dashboard");
-  return (
-    <ErrorBoundary key={page}>
-      {page === "upload" ? (
-        <ProjectUploadPage onOpenDashboard={() => setPage("dashboard")} />
-      ) : (
-        <DashboardPage onOpenUpload={() => setPage("upload")} />
-      )}
-    </ErrorBoundary>
-  );
+  if (page === "upload") {
+    return <ProjectUploadPage onOpenDashboard={() => setPage("dashboard")} />;
+  }
+  return <DashboardPage onOpenUpload={() => setPage("upload")} />;
 }
 
 export default App;
